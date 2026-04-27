@@ -47,7 +47,7 @@ Place these files in the data directory:
 | `entire_database_AF.json` | DescribePROT sequences with UniProt IDs | DescribePROT database | http://biomine.cs.vcu.edu/servers/DESCRIBEPROT/ |
 | `Q-BioLiP_all.csv` | Q-BioLiP binding site data | Q-BioLiP database | https://yanglab.qd.sdu.edu.cn/Q-BioLiP/DATA/Q-BioLiP_all.csv |
 | `BioLiP2.txt` | BioLiP2 binding site data (tab-separated and extracted) | BioLiP2 database | https://aideepmed.com/BioLiP/download/BioLiP.txt.gz |
-| `approved_ligands.xlsx` | Approved ligands excel with DrugBank IDs | User created | In github |
+| `approved_ligands.xlsx` | Approved ligands excel with DrugBank IDs | User created | https://github.com/sagegint/Biolip_Pipeline_for_DescribePROT/blob/main/approved_ligands.xlsx |
 | `rec_pdb/` | Folder containing PDB files and bundles | Q-BioLiP database | https://yanglab.qd.sdu.edu.cn/Q-BioLiP/Download/download_auto.html |
 | `filtered_describePROT.csv` | DescribePROT cache filtered by ["ACC", "seq"] | created by user | https://github.com/sagegint/Biolip_Pipeline_for_DescribePROT/blob/main/filtered_describePROT.csv |
 
