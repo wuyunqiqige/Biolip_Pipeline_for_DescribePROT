@@ -4,7 +4,7 @@ A comprehensive pipeline for processing, aligning, and merging binding site data
 
 ## Overview
 
-This pipeline processes millions of binding site records from two major protein-ligand interaction databases, aligns sequences to DescribePROT reference sequences, renumbers binding sites to standard coordinates, and creates a fully normalized database.
+This pipeline processes binding site records from two major protein-ligand interaction databases, aligns sequences to DescribePROT reference sequences, renumbers binding sites to standard coordinates, and creates a fully normalized database.
 
 ### Key Features
 
