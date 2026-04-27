@@ -153,7 +153,7 @@ python main.py --only-final --skip-db
 python main.py --no-qbio-aligned --no-biolip2-aligned
 
 # Skip alignment (use cached results)
-python main.py --skip-alignment --no-cache
+python main.py --skip-alignment
 
 # Skip everything except final.json
 python main.py --only-final --skip-db
