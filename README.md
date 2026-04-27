@@ -44,12 +44,12 @@ Place these files in the data directory:
 
 | File | Description | Source | Link |
 |------|-------------|--------|------|
-| `entire_database_AF.json` | DescribePROT sequences with UniProt IDs | DescribePROT database |
-| `Q-BioLiP_all.csv` | Q-BioLiP binding site data | Q-BioLiP database |
-| `BioLiP2.txt` | BioLiP2 binding site data (tab-separated) | BioLiP2 database |
-| `approved_ligands.xlsx` | Approved ligands with DrugBank IDs | User created |
-| `rec_pdb/` | Folder containing PDB files and bundles | PDB database |
-| `filtered_describePROT.csv` | DescribePROT cache filtered by ["ACC", "seq"] | created by user |
+| `entire_database_AF.json` | DescribePROT sequences with UniProt IDs | DescribePROT database | http://biomine.cs.vcu.edu/servers/DESCRIBEPROT/ |
+| `Q-BioLiP_all.csv` | Q-BioLiP binding site data | Q-BioLiP database | https://yanglab.qd.sdu.edu.cn/Q-BioLiP/DATA/Q-BioLiP_all.csv |
+| `BioLiP2.txt` | BioLiP2 binding site data (tab-separated and extracted) | BioLiP2 database | https://aideepmed.com/BioLiP/download/BioLiP.txt.gz |
+| `approved_ligands.xlsx` | Approved ligands excel with DrugBank IDs | User created | In github |
+| `rec_pdb/` | Folder containing PDB files and bundles | Q-BioLiP database | https://yanglab.qd.sdu.edu.cn/Q-BioLiP/Download/download_auto.html |
+| `filtered_describePROT.csv` | DescribePROT cache filtered by ["ACC", "seq"] | created by user | https://github.com/sagegint/Biolip_Pipeline_for_DescribePROT/blob/main/filtered_describePROT.csv |
 
 Please note that while filtered_describePROT is not technically a required file to run this pipeline, and is instead a cache, the filter describePROT python file takes a very long time to run, more than overnight - for speed, I'd recommend using the cache until a more efficient way of removing descriptor data from the original describePROT database json is developed. 
 
