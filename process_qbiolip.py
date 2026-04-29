@@ -233,61 +233,37 @@ def filter_by_ligands(qbio_df, approved_ligands_file, ligand_id_col='Ligand ID',
 @timer
 def flatten_binding_sites(qbio_df):
     """
-    Flatten the binding site data by exploding on binding sites.
+    Process binding sites but keep them grouped (do NOT explode).
+    Instead, standardize the format and extract chain information.
     
-    Original Q-BioLiP rows may have multiple binding sites in one row.
-    This function splits them into individual rows (one per binding site).
-    
-    Example:
-        Original: Binding Site = "A:L84 V87 Y88"
-        After flattening: 3 rows, one for each site
-        
     Args:
         qbio_df: DataFrame with binding sites as space-separated strings
     
     Returns:
-        Flattened DataFrame with one row per binding site
-    
-    Logic:
-        1. Split space-separated binding sites into lists
-        2. Use pandas explode() to create one row per list item
-        3. Extract chain ID and residue from each binding site string
-        4. Also process the PDB-formatted binding sites similarly
+        DataFrame with binding sites still grouped (one row per original entry)
     """
-    print("Flattening binding site data...")
+    print("Processing binding site data...")
     
-    # Step 1: Split binding site strings into lists
-    # Regex pattern: split on space only if followed by chain:residue pattern
-    # Example: "A:L84 V87 Y88" → ["A:L84", "V87", "Y88"]
-    split_patt = r' (?=[A-Za-z0-9]+:)'
-    qbio_df["Binding Site"] = qbio_df["Binding Site"].str.split(split_patt)
-    qbio_df["Binding Site PDB"] = qbio_df["Binding Site PDB"].str.split(split_patt)
+    # Step 1: Standardize the format (ensure chain prefixes are consistent)
     
-    # Step 2: Explode - create one row per binding site
-    original_count = len(qbio_df)
-    qbio_flat = qbio_df.explode(["Binding Site", "Binding Site PDB"], ignore_index=True)
-    print(f"  After exploding: {len(qbio_flat)} rows (from {original_count})")
+    # Step 2: Extract chain information from the first binding site
+    # (since all sites in the group share the same chain)
     
-    # Step 3: Extract chain and residue from binding site strings
-    # Format: "CHAIN:RESIDUE" (e.g., "A:L84")
-    qbio_flat[["Chain", "Binding Site"]] = (
-        qbio_flat["Binding Site"]
-        .str.extract(r'^([A-Za-z0-9]+):(.*)$')
+    qbio_df[["Chain", "First_Binding_Site"]] = (
+        qbio_df["Binding Site"]
+        .str.extract(r'^([A-Za-z0-9]+):([A-Za-z0-9]+)')
     )
     
-    # Trim extracted binding sites
-    qbio_flat["Binding Site"] = qbio_flat["Binding Site"].str.strip()
-    
-    # Step 4: Extract PDB chain from PDB-formatted binding sites
-    # Format: "CHAIN:RESIDUE" (same pattern)
-    qbio_flat[["PDB Chain", "Binding Site PDB"]] = (
-        qbio_flat["Binding Site PDB"]
-        .str.extract(r'^([A-Za-z0-9]+):(.*)$')
+    qbio_df[["PDB_Chain", "First_PDB_Binding_Site"]] = (
+        qbio_df["Binding Site PDB"]
+        .str.extract(r'^([A-Za-z0-9]+):([A-Za-z0-9]+)')
     )
     
-    # Trim extracted PDB binding sites
-    qbio_flat["Binding Site PDB"] = qbio_flat["Binding Site PDB"].str.strip()
+    # Remove chain prefixes from binding site strings (keep as grouped)
+    # Remove "A:L84 V87 Y88" → "L84 V87 Y88"
+    qbio_df["Binding Site"] = qbio_df["Binding Site"].str.replace(r'[A-Za-z0-9]+:', '', regex=True)
+    qbio_df["Binding Site PDB"] = qbio_df["Binding Site PDB"].str.replace(r'[A-Za-z0-9]+:', '', regex=True)
     
-    print(f"  Final flattened rows: {len(qbio_flat)}")
+    print(f"  Processed {len(qbio_df)} grouped rows")
     
-    return qbio_flat
+    return qbio_df

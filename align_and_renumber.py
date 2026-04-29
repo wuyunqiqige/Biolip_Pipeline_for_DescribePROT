@@ -664,11 +664,6 @@ def align_and_renumber_dataset(
             sample = df[sites_col].dropna().iloc[0]
             print(f"    Sample binding site: {sample}")
     
-    if sites_col and 'Receptor_sequence' in df.columns:
-        count_binding_site_mismatches(df, sites_col, 'Receptor_sequence', "Original validation")
-    elif sites_col and seq_col:
-        count_binding_site_mismatches(df, sites_col, seq_col, "Original validation")
-    
     # =========================================================================
     # STEP 8: Group by (UniProt_ID, Sequence) to avoid redundant BLAST
     # =========================================================================
