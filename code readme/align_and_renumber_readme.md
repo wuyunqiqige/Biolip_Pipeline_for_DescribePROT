@@ -30,21 +30,22 @@ Q-BioLiP and BioLiP2 databases provide binding site positions based on PDB file 
 | **Batch Processing** | Groups identical (UniProt_ID, Sequence) pairs to minimize BLAST calls |
 
 ## Algorithm Flow
+
 1. Input DataFrame + DescribePROT reference
-2. Group by (UniProt_ID, Sequence)
-3. Check Cache for existing alignments
-4. For each unique pair:
+2. Detect sequence column (Sequence/Receptor_sequence/seq)
+3. Detect binding sites column based on dataset name
+4. Identify and preserve affinity/metadata columns
+5. Group by (UniProt_ID, Sequence) to avoid redundant BLAST
+6. Check cache for existing alignments
+7. For each unique pair:
    - If cached: load position map
-   - If sequences identical: create 1:1 map
-   - Else:
-     - Run BLAST
-     - Parse alignment
-     - Create position map
-5. Apply mapping to all rows in group
-6. Validate each binding site (amino acid match)
-7. Restore preserved columns (affinity, metadata)
-8. Filter out failed alignments
-9. Output: DataFrame with renumbered binding sites
+   - If sequences identical: create 1:1 map without BLAST
+   - Else: Run BLAST, parse alignment, create position map
+8. Apply mapping to all rows in group
+9. Validate each binding site (amino acid match)
+10. Restore preserved columns (affinity, metadata)
+11. Filter out failed alignments
+12. Output DataFrame with renumbered binding sites
 
 
 ## Function Documentation
@@ -214,43 +215,53 @@ Affinity and metadata columns are preserved by:
 | Preserved columns | Original affinity and metadata |
 
 
-## Issues with Q-BioLiP
+## Q-BioLiP Example 
 
 ```Text 
 ============================================================
   ALIGNMENT FOR QBioLiP
 ============================================================
 
+  Initializing alignment for QBioLiP...
+  Loaded 2,276,602 describePROT sequences
+  Loaded 51257 cached alignments
+  Using sequence column: 'Receptor_sequence'
+  Using Q-BioLiP binding sites column: 'Binding_site_pdb'
+  Preserving 8 additional columns: ['Assembly ID', 'Ligand Detail', 'Ligand_ID', 'PDB_ID', 'Binding_affinity_MOAD']...
+
   ----------------------------------------
-  BEFORE ALIGNMENT
+  BEFORE ALIGNMENT (original binding sites against original sequences)
   ----------------------------------------
-    Binding sites column 'Binding_site_pdb' has 328,765 non-null values
-    Sample binding site: K1056 E1058 E1117
-    Original validation: 445,537/2,056,753 matches (21.66%)
+    Binding sites column 'Binding_site_pdb' has 245,299 non-null values
+    Sample binding site: K56 E58 E117
+
+  Final cache saved: 51257 alignments to QBioLiP_alignment_cache.pkl
 
   Processing stats:
-    From cache: 55,202
-    Direct matches (no BLAST): 701
-    Pairwise BLAST runs: 54,501
+    From cache: 51,257
+    Direct matches (no BLAST): 0
+    Pairwise BLAST runs: 0
+    No target sequence found: 0
+
+  Applying results to 245,299 rows...
+  Applying results: 100%|████████████████████████████████| 245299/245299 [00:38<00:00, 6340.82it/s]
 
   ----------------------------------------
-  AFTER ALIGNMENT
+  AFTER ALIGNMENT (mapped binding sites against describePROT)
   ----------------------------------------
-    After mapping: 431,682/431,682 matches (100.00%)
+    After mapping (before filtering): 1,958,293/1,958,293 matches (100.00%)
+      Mismatches: 0 (0.00%)
+      Out of range: 0 (0.00%)
 
-  Site removal statistics:
-    Total original sites: 2,026,448
-    Sites kept after mapping: 431,682 (21.30%)
-    Removed due to amino acid mismatch: 1,234,785
+  Site removal statistics during mapping:
+    Total original sites: 1,991,818
+    Sites kept after mapping: 1,958,293 (98.32%)
+    Removed due to amino acid mismatch: 12,802
+    Removed due to out of range: 0
 
-  QBioLiP Alignment Results
-  ==================================================
-    Total rows processed: 328,765
-    Successfully aligned: 325,203
-      - All binding sites mapped: 55,905
-      - Partial binding sites mapped: 61,684
+  QBioLiP: Removed 2,079 records with NO BLAST hit, kept 243,220
+    Kept breakdown: {'all_sites_mapped': 229303, 'partial_mapping': 11590, 'no_sites_mapped': 2327}
 ```
-Logic will need to be updated to correct Q-BioLiP parsing losing so much Binding AA information. 
 
 ## Error Handling
 

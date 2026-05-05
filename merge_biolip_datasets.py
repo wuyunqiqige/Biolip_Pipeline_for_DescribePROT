@@ -76,6 +76,122 @@ def get_position(site):
     match = re.search(r'\d+', site)
     return int(match.group()) if match else 0
 
+def print_detailed_overlap_statistics(original_df, dataset_name="BINDING SITE OVERLAP"):
+    """
+    Print comprehensive overlap statistics between Q-BioLiP and BioLiP2 datasets.
+    
+    Overlap is defined as exact match of:
+        - UniProt_ID
+        - Ligand_ID  
+        - Individual binding site (e.g., 'K57', 'D116')
+    
+    Args:
+        original_df: DataFrame with 'Binding_sites_QBioLiP', 'Binding_sites_BioLiP2',
+                    'UniProt_ID', and 'Ligand_ID' columns
+        dataset_name: Name for printing header
+    """
+    if original_df is None or original_df.empty:
+        print("  No data for overlap statistics")
+        return None
+    
+    print("\n" + "=" * 80)
+    print(f"  {dataset_name}")
+    print("=" * 80)
+    
+    # =========================================================================
+    # STEP 1: Build sets of (UniProt_ID, Ligand_ID, Binding_site)
+    # =========================================================================
+    qbio_sites = set()
+    biolip2_sites = set()
+    
+    # Track counts BEFORE deduplication (raw site occurrences)
+    qbio_raw_count = 0
+    biolip2_raw_count = 0
+    
+    for _, row in original_df.iterrows():
+        uniprot = row['UniProt_ID']
+        ligand = row['Ligand_ID']
+        
+        # Process Q-BioLiP binding sites
+        qbio_sites_str = row.get('Binding_sites_QBioLiP', '')
+        if pd.notna(qbio_sites_str) and qbio_sites_str:
+            sites = parse_binding_sites(qbio_sites_str)
+            qbio_raw_count += len(sites)
+            for site in sites:
+                qbio_sites.add((uniprot, ligand, site))
+        
+        # Process BioLiP2 binding sites
+        biolip2_sites_str = row.get('Binding_sites_BioLiP2', '')
+        if pd.notna(biolip2_sites_str) and biolip2_sites_str:
+            sites = parse_binding_sites(biolip2_sites_str)
+            biolip2_raw_count += len(sites)
+            for site in sites:
+                biolip2_sites.add((uniprot, ligand, site))
+    
+    # =========================================================================
+    # STEP 2: Calculate overlap sets
+    # =========================================================================
+    common = qbio_sites & biolip2_sites
+    only_qbio = qbio_sites - biolip2_sites
+    only_biolip2 = biolip2_sites - qbio_sites
+    total_unique = qbio_sites | biolip2_sites
+    
+    # =========================================================================
+    # STEP 3: Print OVERALL STATISTICS
+    # =========================================================================
+    print(f"\n  OVERALL BINDING SITE STATISTICS")
+    print(f"  {'-' * 60}")
+    print(f"  Q-BioLiP raw sites (before dedup):         {qbio_raw_count:,}")
+    print(f"  BioLiP2 raw sites (before dedup):          {biolip2_raw_count:,}")
+    print(f"  {'-' * 60}")
+    print(f"  Q-BioLiP UNIQUE (UniProt+Ligand+Site):     {len(qbio_sites):,}")
+    print(f"  BioLiP2 UNIQUE (UniProt+Ligand+Site):      {len(biolip2_sites):,}")
+    print(f"  {'-' * 60}")
+    print(f"  Common to both datasets (UNIQUE):          {len(common):,}")
+    print(f"  Only in Q-BioLiP (UNIQUE):                 {len(only_qbio):,}")
+    print(f"  Only in BioLiP2 (UNIQUE):                  {len(only_biolip2):,}")
+    print(f"  Total unique binding sites (union):        {len(total_unique):,}")
+    
+    # =========================================================================
+    # STEP 4: Print OVERLAP PERCENTAGES
+    # =========================================================================
+    if len(total_unique) > 0:
+        print(f"\n  OVERLAP ANALYSIS (Based on Unique Sites)")
+        print(f"  {'-' * 60}")
+        
+        overlap_pct_of_total = (len(common) / len(total_unique)) * 100
+        print(f"  Shared binding sites (% of total unique):         {overlap_pct_of_total:.1f}%")
+        
+        if len(qbio_sites) > 0:
+            qbio_overlap_pct = (len(common) / len(qbio_sites)) * 100
+            print(f"  Q-BioLiP unique sites also in BioLiP2:          {qbio_overlap_pct:.1f}% ({len(common):,}/{len(qbio_sites):,})")
+        
+        if len(biolip2_sites) > 0:
+            biolip2_overlap_pct = (len(common) / len(biolip2_sites)) * 100
+            print(f"  BioLiP2 unique sites also in Q-BioLiP:          {biolip2_overlap_pct:.1f}% ({len(common):,}/{len(biolip2_sites):,})")
+        
+        print(f"  {'-' * 60}")
+        
+        qbio_dedup_rate = (1 - len(qbio_sites) / qbio_raw_count) * 100 if qbio_raw_count > 0 else 0
+        biolip2_dedup_rate = (1 - len(biolip2_sites) / biolip2_raw_count) * 100 if biolip2_raw_count > 0 else 0
+        
+        print(f"  Q-BioLiP redundancy removed: {qbio_dedup_rate:.1f}% ({qbio_raw_count - len(qbio_sites):,} duplicates)")
+        print(f"  BioLiP2 redundancy removed: {biolip2_dedup_rate:.1f}% ({biolip2_raw_count - len(biolip2_sites):,} duplicates)")
+    
+    # =========================================================================
+    # STEP 5: Return statistics for potential further use
+    # =========================================================================
+    return {
+        'qbio_sites': qbio_sites,
+        'biolip2_sites': biolip2_sites,
+        'common': common,
+        'only_qbio': only_qbio,
+        'only_biolip2': only_biolip2,
+        'total_unique': total_unique,
+        'qbio_raw_count': qbio_raw_count,
+        'biolip2_raw_count': biolip2_raw_count
+    }
+
 
 # =============================================================================
 # GROUPING AND MERGING FUNCTIONS
@@ -348,7 +464,14 @@ def create_final_json_with_combined_pdbs(exploded_df, original_df, output_file, 
         all_counts['QBioLiP_Sites'] = 0
         all_counts['BioLiP2_Sites'] = 0
         all_counts = all_counts[['Ligand_ID', 'QBioLiP_Sites', 'BioLiP2_Sites', 'Combined_Unique_Sites']]
-    
+
+
+     # =========================================================================
+    # ADD OVERLAP STATISTICS HERE - RIGHT AFTER LIGAND COUNTS
+    # =========================================================================
+    if original_df is not None and not original_df.empty:
+        print_detailed_overlap_statistics(original_df, "QBioLiP vs BioLiP2 BINDING SITE OVERLAP")
+
     # =========================================================================
     # Identify affinity columns for JSON
     # =========================================================================

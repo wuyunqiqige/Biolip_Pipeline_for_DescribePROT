@@ -20,20 +20,6 @@ Usage:
     python main.py --data-dir /path/to/data --only-final --skip-db --no-qbio-aligned 
     --no-biolip2-aligned --no-merged-csv --no-ligand-counts --skip-alignment --no-cache 
     --ligand-json custom_ligand.json
-
-    --data-dir /path/to/data : Directory containing input files 
-    (describePROT, Q-BioLiP, BioLiP2, approved_ligands, rec_pdb folder) - unnecessary if main in directory 
-    --only-final : Only save final.json and database (skip all intermediate files)
-    --skip-db : Skip creating database entirely (only generate final.json & intermediate files unless specified)
-    --no-qbio-aligned : Do not save qbiolip_aligned.csv (Q-BioLiP alignment output)
-    --no-biolip2-aligned : Do not save biolip2_aligned.csv (BioLiP2 alignment output)
-    --no-merged-csv	: Do not save merged_biolip_datasets_by_pdb_separate.csv (intermediate merged file)
-    --no-ligand-counts : Do not save ligand_binding_site_counts.xlsx (per ligand binding AA counts)
-    --skip-alignment : Skip BLAST alignment step (use pre-aligned data)
-    --no-cache : Disable caching of alignment results (forces fresh BLAST runs)
-    --ligand-json : Path to ligand.json file with ligand names (optional, for database)
-    --verbose : Print verbose output (debugging information)
-    --show-requirements : Show required input files and exit (does not run pipeline)
 """
 
 import sys
@@ -66,25 +52,28 @@ from align_and_renumber import align_and_renumber_dataset, validate_and_update_b
 from create_database import create_database, load_data_to_database
 
 
+def print_columns(df, step_name, dataset_name):
+    """Print column names for a DataFrame at a specific step."""
+    print(f"\n  [{dataset_name}] {step_name} - Columns ({len(df.columns)}):")
+    for i, col in enumerate(df.columns):
+        print(f"    {i+1}. {col}")
+    
+    # Print first row sample
+    if len(df) > 0:
+        print(f"\n  [{dataset_name}] {step_name} - Sample entry (first row):")
+        first_row = df.iloc[0]
+        for col in df.columns:
+            # Truncate long values for readability
+            value = str(first_row[col])
+            if len(value) > 80:
+                value = value[:77] + "..."
+            print(f"    {col}: {value}")
+        print("-" * 40)
+
+
 def main():
     """
     Main function - orchestrates the entire pipeline.
-    
-    Command line arguments control:
-        - Data directory location
-        - Output file naming
-        - Verbose logging
-        - Alignment skipping (for testing)
-        - Cache control
-    
-    The pipeline has 6 main steps:
-        STEP 1: Load DescribePROT data
-        STEP 2: Load and process Q-BioLiP data
-        STEP 3: Load and process BioLiP2 data
-        STEP 4: Validate binding sites (pre-alignment)
-        STEP 5: Align to DescribePROT and renumber
-        STEP 6: Merge datasets and generate outputs
-        STEP 7: Create normalized tables and save
     """
     
     # =========================================================================
@@ -136,7 +125,7 @@ def main():
         args.no_merged_csv = True
         args.no_ligand_counts = True
     
-    # Handle --show-requirements flag (just print requirements and exit)
+    # Handle --show-requirements flag
     if args.show_requirements:
         from utils import print_file_requirements
         print_file_requirements(Config)
@@ -163,12 +152,47 @@ def main():
     print(f"  - biolip.db: {'YES' if not args.skip_db else 'NO'}")
     print("-" * 60)
     
-    # =========================================================================
-    # INPUT FILE VALIDATION
+   # =========================================================================
+    # INPUT FILE VALIDATION (Skip original DescribePROT if cache exists)
     # =========================================================================
     print("\nChecking input files...")
-    missing_files = check_input_files(args.data_dir, Config)
-    
+
+    # Check for cached DescribePROT file first
+    data_dir = Path(args.data_dir)
+    describeprot_cache_file = data_dir / Config.INPUT_FILES['describeprot'].get('cache', 'filtered_describePROT.json')
+
+    # If cache exists, we don't need the original file
+    if describeprot_cache_file.exists():
+        print(f"  Found cached DescribePROT file: {describeprot_cache_file}")
+        print("  Will use cache instead of original entire_database_AF.json")
+        print("  Original entire_database_AF.json is NOT required")
+    else:
+        print("  No cached DescribePROT file found. Will need original entire_database_AF.json")
+
+    # Check for missing files
+    missing_files = []
+
+    # Check each required file
+    for file_key, file_info in Config.INPUT_FILES.items():
+        # Skip describeprot entirely if cache exists
+        if file_key == 'describeprot' and describeprot_cache_file.exists():
+            continue
+        
+        file_path = Config.get_input_path(file_key, args.data_dir)
+        if not file_path.exists():
+            missing_files.append({
+                'path': str(file_path),
+                'description': file_info.get('description', f'Required {file_key} file')
+            })
+
+    # Also check for PDB folder
+    pdb_path = Config.get_pdb_path(args.data_dir)
+    if not pdb_path.exists():
+        missing_files.append({
+            'path': str(pdb_path),
+            'description': Config.get_pdb_description()
+        })
+
     if missing_files:
         print("ERROR: Missing required files/folders:")
         print("-" * 60)
@@ -178,71 +202,88 @@ def main():
         print("\n" + "=" * 60)
         print(f"Please place all required files in: {Path(args.data_dir).absolute()}")
         sys.exit(1)
-    
+
     print("All required files found!")
     
     try:
         # =====================================================================
         # STEP 1: LOAD DESCRIBEPROT DATA
         # =====================================================================
-        # DescribePROT provides reference sequences for alignment.
-        # The data is filtered to keep only ACC and seq columns.
-        # Results are cached for faster subsequent runs.
         print("\n" + "=" * 60)
-        print("Loading DescribePROT data")
+        print("STEP 1: Loading DescribePROT data")
         print("=" * 60)
-        describeprot_file = Config.get_input_path('describeprot', args.data_dir)
-        describeprot_cache = Config.get_cache_path('describeprot', args.data_dir)
 
-        describe_df = filter_describeprot_data(
-            describeprot_file,
-            keep_columns=Config.DESCRIBEPROT_KEEP_COLUMNS,
-            batch_size=Config.BATCH_SIZE,
-            cache_file=describeprot_cache
-        )
+        # Check for cached file first
+        describeprot_cache_file = Path(args.data_dir) / Config.INPUT_FILES['describeprot'].get('cache', 'filtered_describePROT.json')
+
+        if describeprot_cache_file.exists():
+            print(f"  Found cached filtered file: {describeprot_cache_file}")
+            import json
+            with open(describeprot_cache_file, 'r') as f:
+                cached_data = json.load(f)
+            describe_df = pd.DataFrame(cached_data)
+            print(f"  Loaded {len(describe_df):,} records from cache")
+        else:
+            # No cache - need original file
+            describeprot_file = Config.get_input_path('describeprot', args.data_dir)
+            if not describeprot_file.exists():
+                print(f"  ERROR: No DescribePROT file found!")
+                print(f"  Please provide either:")
+                print(f"    1. Cached file: {describeprot_cache_file}")
+                print(f"    2. Original file: {describeprot_file}")
+                sys.exit(1)
+            
+            describeprot_cache = Config.get_cache_path('describeprot', args.data_dir)
+            describe_df = filter_describeprot_data(
+                describeprot_file,
+                keep_columns=Config.DESCRIBEPROT_KEEP_COLUMNS,
+                batch_size=Config.BATCH_SIZE,
+                cache_file=describeprot_cache
+            )
+
+        print_columns(describe_df, "After loading", "DescribePROT")
         
         # =====================================================================
         # STEP 2: LOAD AND PROCESS Q-BIOLIP DATA
         # =====================================================================
-        # Q-BioLiP processing pipeline:
-        #   2a. Load CSV and filter by UniProt IDs (keep only those in DescribePROT)
-        #   2b. Filter by Interaction == "yes"
-        #   2c. Standardize column names (including affinity columns)
-        #   2d. Filter by approved ligands (adds DrugBank column)
-        #   2e. Flatten binding sites (explode multi-site rows)
-        #   2f. Extract sequences from PDB files (single files and bundles)
-        #   2g. Merge sequences with binding data
         print("\n" + "=" * 60)
-        print("Loading and processing Q-BioLiP data")
+        print("STEP 2: Loading and processing Q-BioLiP data")
         print("=" * 60)
         qbiolip_file = Config.get_input_path('qbiolip', args.data_dir)
+
+        # 2a: Load and filter
         qbio_filtered = load_and_filter_qbiolip(qbiolip_file, describe_df)
-        
-        # Standardize Q-BioLiP column names
-        qbio_filtered = standardize_qbiolip_columns(qbio_filtered)
-        
-        # Trim whitespace and standardize ligand names
+        print_columns(qbio_filtered, "After load_and_filter_qbiolip", "Q-BioLiP")
+
+        # 2b: Trim strings and standardize ligand names (BEFORE standardizing columns)
         qbio_filtered = trim_string_columns(qbio_filtered)
         qbio_filtered = standardize_ligand_names(qbio_filtered)
-        
-        # Filter by approved ligands
+        print_columns(qbio_filtered, "After trim and ligand name standardization", "Q-BioLiP")
+
+        # 2c: Standardize columns (renames and drops originals)
+        qbio_filtered = standardize_qbiolip_columns(qbio_filtered)
+        print_columns(qbio_filtered, "After standardize_qbiolip_columns", "Q-BioLiP")
+
+        # 2d: Filter by approved ligands
         print("\n" + "-" * 40)
         print("Filtering by approved ligands...")
         approved_ligands_file = Config.get_input_path('approved_ligands', args.data_dir)
-        
+
         qbio_with_ligands = filter_by_ligands(
             qbio_filtered, 
             approved_ligands_file,
             ligand_id_col='Ligand ID',
             drugbank_col='DrugBank'
         )
-        
-        # Flatten binding sites (one row per binding site)
+        print_columns(qbio_with_ligands, "After filter_by_ligands", "Q-BioLiP")
+
+        # 2e: Flatten binding sites
         print("\n" + "-" * 40)
         print("Flattening binding sites...")
         qbio_flat = flatten_binding_sites(qbio_with_ligands)
-        
-        # Extract sequences from PDB files
+        print_columns(qbio_flat, "After flatten_binding_sites", "Q-BioLiP")
+
+        # 2f: Extract sequences from PDB files
         print("\n" + "-" * 40)
         print("Extracting sequences from PDB files...")
         pdb_folder = Config.get_pdb_path(args.data_dir)
@@ -254,30 +295,24 @@ def main():
             qbio_flat,
             cache_dir=pdb_cache_dir
         )
-        
-        # Merge sequences with Q-BioLiP binding data
+
+        print_columns(easy_seq, "Extracted sequences (single PDBs)", "PDB")
+        print_columns(diff_seq, "Extracted sequences (bundles)", "PDB")
+
+        # 2g: Merge sequences with Q-BioLiP binding data
         print("\n" + "-" * 40)
         print("Merging sequences with Q-BioLiP data...")
         qbio_final = merge_sequences_with_qbiolip(qbio_flat, easy_seq, diff_seq)
         qbio_final = standardize_qbiolip_columns(qbio_final)
-        
-        # Final cleaning
-        qbio_final = trim_string_columns(qbio_final)
-        qbio_final = standardize_ligand_names(qbio_final)
-        
-        print(f"  Q-BioLiP final records: {len(qbio_final):,}")
+
+        print_columns(qbio_final, "Final Q-BioLiP (after merge)", "Q-BioLiP")
+        print(f"\n  Q-BioLiP final records: {len(qbio_final):,}")
         
         # =====================================================================
         # STEP 3: LOAD AND PROCESS BIOLIP2 DATA
         # =====================================================================
-        # BioLiP2 processing pipeline:
-        #   3a. Load tab-separated file with predefined column names
-        #   3b. Filter by UniProt IDs (keep only those in DescribePROT)
-        #   3c. Filter by approved ligands
-        #   3d. Standardize column names
-        #   3e. Add DrugBank column from approved ligands
         print("\n" + "=" * 60)
-        print("Loading and processing BioLiP2 data")
+        print("STEP 3: Loading and processing BioLiP2 data")
         print("=" * 60)
 
         biolip2_file = Config.get_input_path('biolip2', args.data_dir)
@@ -291,13 +326,15 @@ def main():
                 approved_ligands_file,
                 output_file=biolip2_output
             )
+            print_columns(biolip2_df, "After process_biolip2", "BioLiP2")
             
             if biolip2_df is not None and len(biolip2_df) > 0:
                 biolip2_df = standardize_biolip2_columns(biolip2_df)
+                print_columns(biolip2_df, "After standardize_biolip2_columns", "BioLiP2")
                 
-                # Trim whitespace and standardize ligand names
                 biolip2_df = trim_biolip2_strings(biolip2_df)
                 biolip2_df = standardize_biolip2_ligands(biolip2_df)
+                print_columns(biolip2_df, "After trim and ligand standardization", "BioLiP2")
                 
                 print(f"\n  BioLiP2 final records: {len(biolip2_df):,}")
             else:
@@ -310,18 +347,9 @@ def main():
         # =====================================================================
         # STEP 4: ALIGN TO DESCRIBEPROT AND RENUMBER
         # =====================================================================
-        # This is the most computationally intensive step.
-        # It performs BLAST alignment of each sequence to its matching
-        # DescribePROT sequence and renumbers binding sites accordingly.
-        #
-        # The alignment uses:
-        #   - Pairwise BLAST (query vs single target)
-        #   - Caching of results to avoid redundant BLAST runs
-        #   - Checkpoint saves every 1000 pairs
-        #   - Amino acid validation (only keep matching sites)
         if not args.skip_alignment:
             print("\n" + "=" * 60)
-            print("Aligning sequences to describePROT and renumbering binding sites")
+            print("STEP 4: Aligning sequences to describePROT and renumbering binding sites")
             print("=" * 60)
             print("This will:")
             print("  1. Align each sequence to describePROT reference")
@@ -330,7 +358,6 @@ def main():
             print("  4. Drop only sequences with NO BLAST hits")
             print("-" * 60)
             
-            # Create alignment reference (only ACC and seq columns)
             full_describe_df = describe_df[['ACC', 'seq']].copy()
             print(f"\n  Loaded {len(full_describe_df):,} describePROT sequences")
             
@@ -345,8 +372,10 @@ def main():
                 dataset_name="QBioLiP",
                 use_cache=use_cache
             )
+            print_columns(qbio_aligned, "After alignment", "Q-BioLiP")
             
             qbio_aligned = validate_and_update_binding_sites(qbio_aligned, "Q-BioLiP")
+            print_columns(qbio_aligned, "After validate_and_update_binding_sites", "Q-BioLiP")
             
             # Align BioLiP2 dataset (if available)
             biolip2_aligned = None
@@ -359,7 +388,10 @@ def main():
                     dataset_name="BioLiP2",
                     use_cache=use_cache
                 )
+                print_columns(biolip2_aligned, "After alignment", "BioLiP2")
+                
                 biolip2_aligned = validate_and_update_binding_sites(biolip2_aligned, "BioLiP2")
+                print_columns(biolip2_aligned, "After validate_and_update_binding_sites", "BioLiP2")
             
             # Save intermediate aligned datasets (optional)
             if not args.no_qbio_aligned:
@@ -375,7 +407,6 @@ def main():
             final_qbio = qbio_aligned
             final_biolip2 = biolip2_aligned
         else:
-            # Skip alignment (for testing or if alignment already done)
             print("\n" + "=" * 60)
             print("SKIPPING SEQUENCE ALIGNMENT (NOT RECOMMENDED)")
             print("=" * 60)
@@ -385,18 +416,11 @@ def main():
         # =====================================================================
         # STEP 5: MERGE DATASETS AND GENERATE OUTPUTS
         # =====================================================================
-        # Final merging step that:
-        #   6a. Merges Q-BioLiP and BioLiP2 on (UniProt, Ligand, PDB)
-        #   6b. Combines binding sites from both sources
-        #   6c. Handles affinity values (prefers BioLiP2)
-        #   6d. Groups binding sites to combine PDB IDs
-        #   6e. Creates final.json and ligand_binding_site_counts.xlsx
         if final_biolip2 is not None and len(final_biolip2) > 0:
             print("\n" + "=" * 60)
-            print("Merging Q-BioLiP and BioLiP2 datasets")
+            print("STEP 5: Merging Q-BioLiP and BioLiP2 datasets")
             print("=" * 60)
             
-            # The merge function handles everything internally
             merged_df = merge_biolip_datasets(
                 final_qbio,
                 final_biolip2,
@@ -409,7 +433,6 @@ def main():
                   if len(merged_df) > 0 else "\n  Merged dataset is empty")
             
         else:
-            # No BioLiP2 data to merge - output only Q-BioLiP results
             print("\n" + "=" * 60)
             print("NO BIOLIP2 DATA TO MERGE")
             print("=" * 60)
@@ -428,21 +451,16 @@ def main():
         # =====================================================================
         if not args.skip_db:
             print("\n" + "=" * 60)
-            print("Creating database")
+            print("STEP 6: Creating SQLite database")
             print("=" * 60)
             
-            # Check if final.json exists
             json_file = Path("final.json")
             if not json_file.exists():
                 print(f"  Warning: {json_file} not found. Skipping database creation.")
             else:
-                # Create database
                 print(f"  Creating database: biolip.db")
                 conn = create_database("biolip.db")
-                
-                # Load data into database
                 load_data_to_database(conn, str(json_file))
-                
                 conn.close()
                 print(f"\n  Database saved to: biolip.db")
                 
@@ -467,11 +485,9 @@ def main():
         print("\n" + "=" * 60)
         
     except KeyboardInterrupt:
-        # Handle Ctrl+C
         print("\n\nUser interrupted. Exiting.")
         sys.exit(1)
     except Exception as e:
-        # Handle other errors with traceback for debugging
         logger.error(f"Error during processing: {e}")
         import traceback
         traceback.print_exc()

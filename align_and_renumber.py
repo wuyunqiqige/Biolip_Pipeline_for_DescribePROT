@@ -900,22 +900,9 @@ def align_and_renumber_dataset(
     return df_filtered
 
 def validate_and_update_binding_sites(df: pd.DataFrame, dataset_name: str) -> pd.DataFrame:
-    """
-    Validate renumbered binding sites and update original columns.
-    
-    Creates a 'Binding_sites' column from the renumbered sites
-    for consistency with downstream processing.
-    
-    Args:
-        df: DataFrame with 'renumbered_binding_sites' column
-        dataset_name: Name for logging
-    
-    Returns:
-        DataFrame with 'Binding_sites' column added
-    """
+    """Rename renumbered binding sites to standardized column name."""
     df = df.copy()
     
-    # Find which column contains the renumbered binding sites
     renumbered_col = None
     if 'renumbered_binding_sites' in df.columns:
         renumbered_col = 'renumbered_binding_sites'
@@ -924,21 +911,12 @@ def validate_and_update_binding_sites(df: pd.DataFrame, dataset_name: str) -> pd
     elif 'Binding_site_renumbered' in df.columns:
         renumbered_col = 'Binding_site_renumbered'
     
-    if renumbered_col:
-        # Save original if it exists
-        if 'Binding_sites' in df.columns:
-            df['Binding_sites_original'] = df['Binding_sites']
-        elif 'binding_sites' in df.columns:
-            df['Binding_sites_original'] = df['binding_sites']
-        
-        # Set Binding_sites to renumbered version
-        df['Binding_sites'] = df[renumbered_col]
-        
-        has_binding_sites = df['Binding_sites'].notna().sum()
-        print(f"\n  {dataset_name}: Created Binding_sites column with {has_binding_sites:,} non-null values")
+    if renumbered_col and renumbered_col != 'Binding_sites':
+        # Rename instead of duplicate
+        df = df.rename(columns={renumbered_col: 'Binding_sites'})
+        print(f"\n  {dataset_name}: Renamed '{renumbered_col}' to 'Binding_sites'")
     
     return df
-
 
 def create_alignment_summary(df: pd.DataFrame, output_path: Path) -> None:
     """

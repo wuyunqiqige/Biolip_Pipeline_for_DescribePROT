@@ -227,7 +227,7 @@ def merge_sequences_with_qbiolip(qbio_flat, easy_seq, diff_seq):
     
     Args:
         qbio_flat: DataFrame with flattened Q-BioLiP binding site data
-                  Contains 'Assembly ID' and 'PDB Chain' columns
+                  Contains 'Assembly ID' and 'PDB_Chain' columns
         easy_seq: DataFrame from extract_sequences.py
                   Columns: ['Assembly ID', 'Chain', 'Sequence']
         diff_seq: DataFrame from extract_sequences.py
@@ -244,7 +244,7 @@ def merge_sequences_with_qbiolip(qbio_flat, easy_seq, diff_seq):
     qbio_merged = pd.merge(
         qbio_flat,
         easy_seq,
-        left_on=["Assembly ID", "PDB Chain"],
+        left_on=["Assembly ID", "PDB_Chain"],
         right_on=["Assembly ID", "Chain"],
         how="left"
     )
@@ -255,7 +255,7 @@ def merge_sequences_with_qbiolip(qbio_flat, easy_seq, diff_seq):
     qbio_seq = pd.merge(
         qbio_merged,
         diff_seq,
-        left_on=["Assembly ID", "PDB Chain"],
+        left_on=["Assembly ID", "PDB_Chain"],
         right_on=["Assembly ID", "Original Chain ID"],
         how="left"
     )
@@ -272,8 +272,9 @@ def merge_sequences_with_qbiolip(qbio_flat, easy_seq, diff_seq):
     existing_cols = [col for col in cols_to_drop if col in qbio_seq.columns]
     qbio_seq = qbio_seq.drop(columns=existing_cols)
     
+    # Remove the Chain_x column completely (don't rename to QbioLiP Chain ID)
     if "Chain_x" in qbio_seq.columns:
-        qbio_seq = qbio_seq.rename(columns={"Chain_x": "QbioLiP Chain ID"})
+        qbio_seq = qbio_seq.drop(columns=["Chain_x"])
     
     # =========================================================================
     # STEP 5: Remove rows without sequences
@@ -288,19 +289,12 @@ def merge_sequences_with_qbiolip(qbio_flat, easy_seq, diff_seq):
     print(f"\n  Available columns for binding site alignment:")
     print(f"    {qbio_seq.columns.tolist()}")
     
-    # Identify binding site column
-    binding_site_col = None
-    possible_binding_cols = ['Binding Site', 'Binding_site_original', 'Binding_site_pdb', 'Binding sites']
-    
-    for col in possible_binding_cols:
-        if col in qbio_seq.columns:
-            binding_site_col = col
-            print(f"  Using binding site column: '{binding_site_col}'")
-            break
-    
-    if binding_site_col is None:
-        print(f"  WARNING: No binding site column found. Available columns: {qbio_seq.columns.tolist()}")
+    binding_site_col = 'Binding_site_pdb'
+    if binding_site_col not in qbio_seq.columns:
+        print(f"  ERROR: '{binding_site_col}' column not found!")
+        print(f"  Available columns: {qbio_seq.columns.tolist()}")
         return qbio_seq
+    print(f"  Using binding site column: '{binding_site_col}'")
     
     # Show sample before alignment
     sample_sites = qbio_seq[binding_site_col].dropna().iloc[0] if len(qbio_seq) > 0 else None

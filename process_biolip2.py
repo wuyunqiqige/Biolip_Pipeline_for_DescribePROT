@@ -104,6 +104,8 @@ def standardize_ligand_names(df):
     # Capitalize all ligand IDs
     df['Ligand_ID_CCD'] = df['Ligand_ID_CCD'].astype(str).str.upper().str.strip()
     
+    # Rename III to III_
+    df['Ligand_ID_CCD'] = df['Ligand_ID_CCD'].replace('III', 'III_')
     # Rename PEPTIDE to III for consistency with Q-BioLiP
     df['Ligand_ID_CCD'] = df['Ligand_ID_CCD'].replace('PEPTIDE', 'III')
     

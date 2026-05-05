@@ -13,6 +13,7 @@ After both datasets have been aligned and renumbered to DescribePROT coordinates
 3. Combines affinity values (preferring BioLiP2 when available)
 4. Groups binding sites to combine PDB IDs (e.g., "7bgn_7bgm")
 5. Creates final JSON output and ligand count statistics
+6. Prints overlap statistics between Q-BioLiP and BioLiP2 datasets
 
 ## Key Features
 
@@ -23,6 +24,7 @@ After both datasets have been aligned and renumbered to DescribePROT coordinates
 | **Affinity Priority** | BioLiP2 values preferred over Q-BioLiP when both exist |
 | **Ligand Statistics** | Calculates unique binding sites per ligand |
 | **Flexible Output** | Optional saving of intermediate CSV and ligand counts |
+| **Overlap Statistics** | Automatically prints dataset overlap analysis showing common and unique binding sites |
 
 ## Algorithm Flow
 
@@ -35,6 +37,23 @@ After both datasets have been aligned and renumbered to DescribePROT coordinates
 7. Explode binding sites into individual records (one per site)
 8. Group by (UniProt_ID, Ligand_ID, Binding_site) to combine PDB IDs
 9. Generate JSON output and ligand statistics
+10. Generate JSON output and ligand statistics
+
+## Overlap Statistics
+
+The module automatically prints comprehensive overlap statistics comparing Q-BioLiP and BioLiP2 datasets. Overlap is defined as exact matches of:
+
+- **UniProt_ID** - same protein
+- **Ligand_ID** - same ligand
+- **Binding_site** - same position and amino acid (e.g., "K57")
+
+Statistics printed include:
+- Raw sites before deduplication
+- Unique sites after deduplication
+- Common binding sites between datasets
+- Dataset-specific binding sites
+- Overlap percentages
+- Redundancy/duplication rates
 
 ## Function Documentation
 
@@ -63,6 +82,17 @@ Extracts numeric position from a binding site string.
 | `site` | str | String like "L176" or "M78" |
 
 **Returns:** Integer position (176) or 0 if not found
+
+### `print_detailed_overlap_statistics(original_df, dataset_name="BINDING SITE OVERLAP")`
+
+Prints comprehensive overlap statistics between Q-BioLiP and BioLiP2 datasets.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `original_df` | pd.DataFrame | DataFrame with `Binding_sites_QBioLiP`, `Binding_sites_BioLiP2`, `UniProt_ID`, and `Ligand_ID` columns |
+| `dataset_name` | str | Name for printing header |
+
+**Returns:** Dictionary containing overlap statistics sets and counts
 
 ### `combine_with_separate_columns(df, group_cols, label)`
 
@@ -159,6 +189,21 @@ Main orchestration function that merges both datasets.
 | `final.json` | JSON records with combined PDB IDs |
 | `ligand_binding_site_counts.xlsx` | Per-ligand unique binding site counts |
 | `merged_biolip_datasets_by_pdb_separate.csv` | Intermediate merged CSV (if `save_merged_csv=True`) |
+
+## Overlap Statistics Return Value
+
+The `print_detailed_overlap_statistics` function returns a dictionary containing:
+
+| Key | Description |
+|-----|-------------|
+| `qbio_sites` | Set of unique Q-BioLiP (UniProt, Ligand, Site) tuples |
+| `biolip2_sites` | Set of unique BioLiP2 (UniProt, Ligand, Site) tuples |
+| `common` | Set of binding sites common to both datasets |
+| `only_qbio` | Set of binding sites unique to Q-BioLiP |
+| `only_biolip2` | Set of binding sites unique to BioLiP2 |
+| `total_unique` | Union of all unique binding sites |
+| `qbio_raw_count` | Total raw Q-BioLiP sites before deduplication |
+| `biolip2_raw_count` | Total raw BioLiP2 sites before deduplication |
 
 ### JSON Output Format Example
 

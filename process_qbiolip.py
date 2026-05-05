@@ -76,43 +76,17 @@ def standardize_ligand_names(df):
     
     return df
 
-
 def standardize_qbiolip_columns(df):
-    """
-    Standardize Q-BioLiP column names for validation and alignment.
-    
-    This creates consistent column names across the pipeline:
-    - Original Q-BioLiP names → Standardized names
-    - Affinity columns are renamed to a common format
-    
-    Args:
-        df: Raw Q-BioLiP DataFrame
-    
-    Returns:
-        DataFrame with renamed columns
-    
-    Critical: Affinity columns are renamed but NOT dropped!
-        'BindingMOAD' → 'Binding_affinity_MOAD'
-        'PDBbind-CN' → 'Binding_affinity_PDBbind'
-        'BindingDB' → 'Binding_affinity_BindingDB'
-    """
+    """Standardize Q-BioLiP column names and drop redundant columns."""
     df = df.copy()
     
     rename_map = {
-        # Core identifiers
         'Uniprot ID': 'UniProt_ID',
         'Ligand ID': 'Ligand_ID',
         'PDB ID': 'PDB_ID',
-        
-        # Binding site columns (two versions: original and PDB-formatted)
-        'Binding Site': 'Binding_site_original',
-        'Binding Site PDB': 'Binding_site_pdb',
+        'Binding Site PDB': 'Binding_site_pdb',  # Only keep PDB version
         'Site': 'Binding_site_number',
-        
-        # Sequence column
         'Sequence': 'Receptor_sequence',
-        
-        # Affinity columns - PRESERVED and renamed
         'BindingMOAD': 'Binding_affinity_MOAD',
         'PDBbind-CN': 'Binding_affinity_PDBbind',
         'BindingDB': 'Binding_affinity_BindingDB'
@@ -122,8 +96,14 @@ def standardize_qbiolip_columns(df):
         if old in df.columns:
             df[new] = df[old]
     
+    # Drop original columns (including Binding Site)
+    original_cols = ['Uniprot ID', 'Ligand ID', 'PDB ID', 'Binding Site', 'Binding Site PDB', 
+                     'Site', 'Sequence', 'BindingMOAD', 'PDBbind-CN', 'BindingDB']
+    cols_to_drop = [col for col in original_cols if col in df.columns]
+    if cols_to_drop:
+        df = df.drop(columns=cols_to_drop)
+    
     return df
-
 
 # =============================================================================
 # MAIN PROCESSING FUNCTIONS
@@ -186,19 +166,10 @@ def filter_by_ligands(qbio_df, approved_ligands_file, ligand_id_col='Ligand ID',
     Filter Q-BioLiP data using approved ligands file and add DrugBank column.
     
     Args:
-        qbio_df: Q-BioLiP DataFrame
+        qbio_df: Q-BioLiP DataFrame (has 'Ligand_ID' column after standardization)
         approved_ligands_file: Excel file with approved ligands
         ligand_id_col: Column name in Excel for ligand IDs (default: 'Ligand ID')
         drugbank_col: Column name in Excel for DrugBank IDs (default: 'DrugBank')
-    
-    Returns:
-        Filtered DataFrame with added 'DrugBank' column
-    
-    Logic:
-        1. Load approved ligands Excel file
-        2. Clean and standardize ligand names
-        3. Filter qbio_df to only approved ligands
-        4. Map DrugBank IDs from approved ligands to qbio_df
     """
     print(f"Filtering by ligands using: {approved_ligands_file}")
     
@@ -210,59 +181,48 @@ def filter_by_ligands(qbio_df, approved_ligands_file, ligand_id_col='Ligand ID',
         if approved[col].dtype == 'object':
             approved[col] = approved[col].astype(str).str.strip()
     
-    # Step 3: Standardize ligand IDs in both DataFrames for matching
-    qbio_df["Ligand ID"] = qbio_df["Ligand ID"].astype(str).str.upper().str.strip()
+    # Step 3: Standardize ligand IDs
+    # Q-BioLiP DataFrame uses 'Ligand_ID' (underscore) after standardization
+    qbio_df["Ligand_ID"] = qbio_df["Ligand_ID"].astype(str).str.upper().str.strip()
+    
+    # Excel file uses ligand_id_col (default: 'Ligand ID' with space)
     approved['Ligand_upper'] = approved[ligand_id_col].astype(str).str.upper().str.strip()
     
     # Step 4: Filter to only approved ligands
     original_count = len(qbio_df)
-    qbio_filtered = qbio_df[qbio_df['Ligand ID'].isin(approved['Ligand_upper'])].copy()
+    qbio_filtered = qbio_df[qbio_df['Ligand_ID'].isin(approved['Ligand_upper'])].copy()
     print(f"  After ligand filter: {len(qbio_filtered)} rows (removed {original_count - len(qbio_filtered)})")
     
     # Step 5: Add DrugBank column by mapping from approved ligands
     if drugbank_col in approved.columns:
         drugbank_map = approved.set_index('Ligand_upper')[drugbank_col].to_dict()
-        qbio_filtered['DrugBank'] = qbio_filtered['Ligand ID'].map(drugbank_map)
+        qbio_filtered['DrugBank'] = qbio_filtered['Ligand_ID'].map(drugbank_map)
     else:
         qbio_filtered['DrugBank'] = None
         print(f"  No DrugBank column found in approved ligands file")
     
     return qbio_filtered
 
-
 @timer
 def flatten_binding_sites(qbio_df):
     """
     Process binding sites but keep them grouped (do NOT explode).
-    Instead, standardize the format and extract chain information.
+    Extract chain information from the binding site.
     
     Args:
-        qbio_df: DataFrame with binding sites as space-separated strings
+        qbio_df: DataFrame with standardized column names (Binding_site_pdb)
     
     Returns:
         DataFrame with binding sites still grouped (one row per original entry)
     """
-    print("Processing binding site data...")
+    print("Processing binding site data (keeping grouped)...")
     
-    # Step 1: Standardize the format (ensure chain prefixes are consistent)
+    # Extract chain from binding site
+    qbio_df["Chain"] = qbio_df["Binding_site_pdb"].str.extract(r'^([A-Za-z0-9]+):')
+    qbio_df["PDB_Chain"] = qbio_df["Binding_site_pdb"].str.extract(r'^([A-Za-z0-9]+):')
     
-    # Step 2: Extract chain information from the first binding site
-    # (since all sites in the group share the same chain)
-    
-    qbio_df[["Chain", "First_Binding_Site"]] = (
-        qbio_df["Binding Site"]
-        .str.extract(r'^([A-Za-z0-9]+):([A-Za-z0-9]+)')
-    )
-    
-    qbio_df[["PDB_Chain", "First_PDB_Binding_Site"]] = (
-        qbio_df["Binding Site PDB"]
-        .str.extract(r'^([A-Za-z0-9]+):([A-Za-z0-9]+)')
-    )
-    
-    # Remove chain prefixes from binding site strings (keep as grouped)
-    # Remove "A:L84 V87 Y88" → "L84 V87 Y88"
-    qbio_df["Binding Site"] = qbio_df["Binding Site"].str.replace(r'[A-Za-z0-9]+:', '', regex=True)
-    qbio_df["Binding Site PDB"] = qbio_df["Binding Site PDB"].str.replace(r'[A-Za-z0-9]+:', '', regex=True)
+    # Remove chain prefixes from binding site strings (keep as grouped space-separated)
+    qbio_df["Binding_site_pdb"] = qbio_df["Binding_site_pdb"].str.replace(r'[A-Za-z0-9]+:', '', regex=True)
     
     print(f"  Processed {len(qbio_df)} grouped rows")
     
