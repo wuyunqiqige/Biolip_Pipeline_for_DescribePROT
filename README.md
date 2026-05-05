@@ -213,20 +213,40 @@ python main.py --show-requirements
 
     - This function creates tables based solely on the output final.json. Therefore, it doesn't contain sequences as DescribePROT likely contains its own normalized table for sequences. The foreign key for sequences will need to be added in fitting these tables for input into DescribePROT.  
 
+## Overlap Statistics 
+
+```Text
+================================================================================
+  QBioLiP vs BioLiP2 BINDING SITE OVERLAP
+================================================================================
+
+  OVERALL BINDING SITE STATISTICS
+  ------------------------------------------------------------
+  Q-BioLiP raw sites (before dedup):         796,278
+  BioLiP2 raw sites (before dedup):          3,971,026
+  ------------------------------------------------------------
+  Q-BioLiP UNIQUE (UniProt+Ligand+Site):     290,177
+  BioLiP2 UNIQUE (UniProt+Ligand+Site):      492,140
+  ------------------------------------------------------------
+  Common to both datasets (UNIQUE):          200,299
+  Only in Q-BioLiP (UNIQUE):                 89,878
+  Only in BioLiP2 (UNIQUE):                  291,841
+  Total unique binding sites (union):        582,018
+
+  OVERLAP ANALYSIS (Based on Unique Sites)
+  ------------------------------------------------------------
+  Shared binding sites (% of total unique):         34.4%
+  Q-BioLiP unique sites also in BioLiP2:          69.0% (200,299/290,177)
+  BioLiP2 unique sites also in Q-BioLiP:          40.7% (200,299/492,140)
+  ------------------------------------------------------------
+  Q-BioLiP redundancy removed: 63.6% (506,101 duplicates)
+  BioLiP2 redundancy removed: 87.6% (3,478,886 duplicates)
+```
+
 
 ## Example Output 
 
 ```Text
-PS C:\Users\sageg\Desktop\VCU\SR_design_project\QBioLiP\Create_Dataset\Biolip_Pipeline_for_DescribePROT> python3 .\main.py
-C:\Users\sageg\.pyenv\pyenv-win\versions\3.13.2\Lib\site-packages\Bio\Application\__init__.py:39: BiopythonDeprecationWarning: The Bio.Application modules and modules relying on it have been deprecated.
-
-Due to the on going maintenance burden of keeping command line application
-wrappers up to date, we have decided to deprecate and eventually remove these
-modules.
-
-We instead now recommend building your command line and invoking it directly
-with the subprocess module.
-  warnings.warn(
 ============================================================
 Creating Final Dataset for DescribePROT from BioLiP databases
 ============================================================
