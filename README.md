@@ -186,7 +186,7 @@ python main.py --show-requirements
 
 | Cache File | Purpose |
 |------------|---------|
-| `filtered_describePROT.csv` | Filtered DescribePROT sequences |
+| `filtered_describePROT.json` | Filtered DescribePROT sequences |
 | `QBioLiP_alignment_cache.pkl` | Q-BioLiP BLAST results with alignments stored |
 | `BioLiP2_alignment_cache.pkl` | BioLiP2 BLAST results with alignments stored |
 | `pdb_cache/single_pdb_sequences.csv` | Extracted single PDB sequences |
