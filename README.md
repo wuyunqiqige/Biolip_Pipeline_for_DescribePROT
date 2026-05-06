@@ -50,9 +50,9 @@ Place these files in the data directory:
 | `BioLiP2.txt` | BioLiP2 binding site data (tab-separated and extracted) | BioLiP2 database | https://aideepmed.com/BioLiP/download/BioLiP.txt.gz |
 | `approved_ligands.xlsx` | Approved ligands excel with DrugBank IDs | User created | In github |
 | `rec_pdb/` | Folder containing PDB files and bundles | Q-BioLiP database | https://yanglab.qd.sdu.edu.cn/Q-BioLiP/Download/download_auto.html |
-| `filtered_describePROT.csv`** | DescribePROT cache filtered by ["ACC", "seq"] | created by user | https://github.com/sagegint/Biolip_Pipeline_for_DescribePROT/blob/main/filtered_describePROT.csv |
+| `filtered_describePROT.json`** | DescribePROT cache filtered by ["ACC", "seq"] | created by user | https://github.com/sagegint/Biolip_Pipeline_for_DescribePROT/blob/main/filtered_describePROT.csv |
 
-*If filtered_describePROT already exists within the directory, you do not need to have entire_database_AF.json in the directory. 
+*If filtered_describePROT.json already exists within the directory, you do not need to have entire_database_AF.json in the directory. 
 
 **Please note that while filtered_describePROT is not technically a required file to run this pipeline, and is instead a cache, the filter describePROT python file takes a very long time to run, more than overnight - for speed, I'd recommend using the cache until a more efficient way of removing descriptor data from the original describePROT database json is developed. 
 
