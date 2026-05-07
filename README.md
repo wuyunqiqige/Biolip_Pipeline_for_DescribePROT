@@ -50,9 +50,9 @@ Place these files in the data directory:
 | `BioLiP2.txt` | BioLiP2 binding site data (tab-separated and extracted) | BioLiP2 database | https://aideepmed.com/BioLiP/download/BioLiP.txt.gz |
 | `approved_ligands.xlsx` | Approved ligands excel with DrugBank IDs | User created | In github |
 | `rec_pdb/` | Folder containing PDB files and bundles | Q-BioLiP database | https://yanglab.qd.sdu.edu.cn/Q-BioLiP/Download/download_auto.html |
-| `filtered_describePROT.json`** | DescribePROT cache filtered by ["ACC", "seq"] | created by user | https://github.com/sagegint/Biolip_Pipeline_for_DescribePROT/blob/main/filtered_describePROT.csv |
+| `filtered_describePROT.csv`** | DescribePROT cache filtered by ["ACC", "seq"] | created by user | https://github.com/sagegint/Biolip_Pipeline_for_DescribePROT/blob/main/filtered_describePROT.csv |
 
-*If filtered_describePROT.json already exists within the directory, you do not need to have entire_database_AF.json in the directory. 
+*If filtered_describePROT already exists within the directory, you do not need to have entire_database_AF.json in the directory. 
 
 **Please note that while filtered_describePROT is not technically a required file to run this pipeline, and is instead a cache, the filter describePROT python file takes a very long time to run, more than overnight - for speed, I'd recommend using the cache until a more efficient way of removing descriptor data from the original describePROT database json is developed. 
 
@@ -186,12 +186,34 @@ python main.py --show-requirements
 
 | Cache File | Purpose |
 |------------|---------|
-| `filtered_describePROT.json` | Filtered DescribePROT sequences |
+| `filtered_describePROT.csv` | Filtered DescribePROT sequences |
 | `QBioLiP_alignment_cache.pkl` | Q-BioLiP BLAST results with alignments stored |
 | `BioLiP2_alignment_cache.pkl` | BioLiP2 BLAST results with alignments stored |
 | `pdb_cache/single_pdb_sequences.csv` | Extracted single PDB sequences |
 | `pdb_cache/bundle_pdb_sequences.csv` | Extracted bundle PDB sequences |
 | `overlap_statistics.pkl` | Cached overlap statistics between datasets |
+
+## Overlap_Statistics.pkl 
+
+The overlap_statistics.pkl file contains a dictionary with the following:
+
+```Python
+{
+    # Sets of unique (UniProt_ID, Ligand_ID, Binding_site) tuples
+    'qbio_sites': set(),        # All unique Q-BioLiP binding site triplets
+    'biolip2_sites': set(),     # All unique BioLiP2 binding site triplets
+    
+    # Overlap sets (also sets of triplets)
+    'common': set(),            # Triplets found in BOTH datasets
+    'only_qbio': set(),         # Triplets only in Q-BioLiP
+    'only_biolip2': set(),      # Triplets only in BioLiP2
+    'total_unique': set(),      # Union of all triplets (qbio_sites | biolip2_sites)
+    
+    # Counts 
+    'qbio_raw_count': int,      # Raw Q-BioLiP sites before deduplication
+    'biolip2_raw_count': int    # Raw BioLiP2 sites before deduplication
+}
+```
 
 # Future Improvements 
 

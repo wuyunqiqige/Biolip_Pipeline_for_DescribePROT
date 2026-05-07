@@ -18,6 +18,7 @@ Key operations:
 import pandas as pd
 import json
 import re
+import pickle
 from pathlib import Path
 from utils import timer
 
@@ -76,7 +77,8 @@ def get_position(site):
     match = re.search(r'\d+', site)
     return int(match.group()) if match else 0
 
-def print_detailed_overlap_statistics(original_df, dataset_name="BINDING SITE OVERLAP"):
+
+def print_detailed_overlap_statistics(original_df, dataset_name="BINDING SITE OVERLAP", use_cache=True, cache_dir='.'):
     """
     Print comprehensive overlap statistics between Q-BioLiP and BioLiP2 datasets.
     
@@ -89,14 +91,77 @@ def print_detailed_overlap_statistics(original_df, dataset_name="BINDING SITE OV
         original_df: DataFrame with 'Binding_sites_QBioLiP', 'Binding_sites_BioLiP2',
                     'UniProt_ID', and 'Ligand_ID' columns
         dataset_name: Name for printing header
+        use_cache: Whether to use/save cache
+        cache_dir: Directory for cache file (default: current directory)
+    
+    Returns:
+        Dictionary containing overlap statistics
     """
     if original_df is None or original_df.empty:
         print("  No data for overlap statistics")
         return None
     
-    print("\n" + "=" * 80)
-    print(f"  {dataset_name}")
-    print("=" * 80)
+    # Setup cache file path
+    cache_file = Path(cache_dir) / "overlap_statistics.pkl"
+    
+    # Try to load from cache
+    if use_cache and cache_file.exists():
+        try:
+            with open(cache_file, 'rb') as f:
+                cached_result = pickle.load(f)
+            
+            # Verify cache has the expected keys
+            expected_keys = ['qbio_sites', 'biolip2_sites', 'common', 'only_qbio', 
+                           'only_biolip2', 'total_unique', 'qbio_raw_count', 'biolip2_raw_count']
+            if all(key in cached_result for key in expected_keys):
+                print(f"\n  Loaded overlap statistics from cache: {cache_file}")
+                
+                # Print the cached statistics
+                result = cached_result
+                
+                print("\n" + "=" * 80)
+                print(f"  {dataset_name} (from cache)")
+                print("=" * 80)
+                
+                print(f"\n  OVERALL BINDING SITE STATISTICS")
+                print(f"  {'-' * 60}")
+                print(f"  Q-BioLiP raw sites (before dedup):         {result['qbio_raw_count']:,}")
+                print(f"  BioLiP2 raw sites (before dedup):          {result['biolip2_raw_count']:,}")
+                print(f"  {'-' * 60}")
+                print(f"  Q-BioLiP UNIQUE (UniProt+Ligand+Site):     {len(result['qbio_sites']):,}")
+                print(f"  BioLiP2 UNIQUE (UniProt+Ligand+Site):      {len(result['biolip2_sites']):,}")
+                print(f"  {'-' * 60}")
+                print(f"  Common to both datasets (UNIQUE):          {len(result['common']):,}")
+                print(f"  Only in Q-BioLiP (UNIQUE):                 {len(result['only_qbio']):,}")
+                print(f"  Only in BioLiP2 (UNIQUE):                  {len(result['only_biolip2']):,}")
+                print(f"  Total unique binding sites (union):        {len(result['total_unique']):,}")
+                
+                if len(result['total_unique']) > 0:
+                    print(f"\n  OVERLAP ANALYSIS (Based on Unique Sites)")
+                    print(f"  {'-' * 60}")
+                    
+                    overlap_pct = (len(result['common']) / len(result['total_unique'])) * 100
+                    print(f"  Shared binding sites (% of total unique):         {overlap_pct:.1f}%")
+                    
+                    if len(result['qbio_sites']) > 0:
+                        qbio_overlap_pct = (len(result['common']) / len(result['qbio_sites'])) * 100
+                        print(f"  Q-BioLiP unique sites also in BioLiP2:          {qbio_overlap_pct:.1f}% ({len(result['common']):,}/{len(result['qbio_sites']):,})")
+                    
+                    if len(result['biolip2_sites']) > 0:
+                        biolip2_overlap_pct = (len(result['common']) / len(result['biolip2_sites'])) * 100
+                        print(f"  BioLiP2 unique sites also in Q-BioLiP:          {biolip2_overlap_pct:.1f}% ({len(result['common']):,}/{len(result['biolip2_sites']):,})")
+                    
+                    print(f"  {'-' * 60}")
+                    
+                    qbio_dedup_rate = (1 - len(result['qbio_sites']) / result['qbio_raw_count']) * 100 if result['qbio_raw_count'] > 0 else 0
+                    biolip2_dedup_rate = (1 - len(result['biolip2_sites']) / result['biolip2_raw_count']) * 100 if result['biolip2_raw_count'] > 0 else 0
+                    
+                    print(f"  Q-BioLiP redundancy removed: {qbio_dedup_rate:.1f}% ({result['qbio_raw_count'] - len(result['qbio_sites']):,} duplicates)")
+                    print(f"  BioLiP2 redundancy removed: {biolip2_dedup_rate:.1f}% ({result['biolip2_raw_count'] - len(result['biolip2_sites']):,} duplicates)")
+                
+                return result
+        except Exception as e:
+            print(f"  Could not load cache: {e}, recalculating...")
     
     # =========================================================================
     # STEP 1: Build sets of (UniProt_ID, Ligand_ID, Binding_site)
@@ -136,9 +201,34 @@ def print_detailed_overlap_statistics(original_df, dataset_name="BINDING SITE OV
     only_biolip2 = biolip2_sites - qbio_sites
     total_unique = qbio_sites | biolip2_sites
     
+    # Build result dictionary
+    result = {
+        'qbio_sites': qbio_sites,
+        'biolip2_sites': biolip2_sites,
+        'common': common,
+        'only_qbio': only_qbio,
+        'only_biolip2': only_biolip2,
+        'total_unique': total_unique,
+        'qbio_raw_count': qbio_raw_count,
+        'biolip2_raw_count': biolip2_raw_count
+    }
+    
+    # Save to cache
+    if use_cache:
+        try:
+            with open(cache_file, 'wb') as f:
+                pickle.dump(result, f)
+            print(f"\n  Saved overlap statistics to cache: {cache_file}")
+        except Exception as e:
+            print(f"  Warning: Could not save cache: {e}")
+    
     # =========================================================================
     # STEP 3: Print OVERALL STATISTICS
     # =========================================================================
+    print("\n" + "=" * 80)
+    print(f"  {dataset_name}")
+    print("=" * 80)
+    
     print(f"\n  OVERALL BINDING SITE STATISTICS")
     print(f"  {'-' * 60}")
     print(f"  Q-BioLiP raw sites (before dedup):         {qbio_raw_count:,}")
@@ -178,19 +268,7 @@ def print_detailed_overlap_statistics(original_df, dataset_name="BINDING SITE OV
         print(f"  Q-BioLiP redundancy removed: {qbio_dedup_rate:.1f}% ({qbio_raw_count - len(qbio_sites):,} duplicates)")
         print(f"  BioLiP2 redundancy removed: {biolip2_dedup_rate:.1f}% ({biolip2_raw_count - len(biolip2_sites):,} duplicates)")
     
-    # =========================================================================
-    # STEP 5: Return statistics for potential further use
-    # =========================================================================
-    return {
-        'qbio_sites': qbio_sites,
-        'biolip2_sites': biolip2_sites,
-        'common': common,
-        'only_qbio': only_qbio,
-        'only_biolip2': only_biolip2,
-        'total_unique': total_unique,
-        'qbio_raw_count': qbio_raw_count,
-        'biolip2_raw_count': biolip2_raw_count
-    }
+    return result
 
 
 # =============================================================================
@@ -376,10 +454,6 @@ def create_final_json_with_combined_pdbs(exploded_df, original_df, output_file, 
     # Use exploded_df for JSON and counts
     df = exploded_df.copy()
     
-    #print(f"\n  DIAGNOSTIC: Input df shape: {df.shape}")
-   # print(f"  DIAGNOSTIC: Input df columns: {df.columns.tolist()}")
-    #print(f"  DIAGNOSTIC: Input df empty: {df.empty}")
-    
     if df.empty:
         print("\n  WARNING: Input DataFrame is empty! No binding sites to process.")
         print("  Creating empty output files...")
@@ -465,12 +539,11 @@ def create_final_json_with_combined_pdbs(exploded_df, original_df, output_file, 
         all_counts['BioLiP2_Sites'] = 0
         all_counts = all_counts[['Ligand_ID', 'QBioLiP_Sites', 'BioLiP2_Sites', 'Combined_Unique_Sites']]
 
-
-     # =========================================================================
+    # =========================================================================
     # ADD OVERLAP STATISTICS HERE - RIGHT AFTER LIGAND COUNTS
     # =========================================================================
     if original_df is not None and not original_df.empty:
-        print_detailed_overlap_statistics(original_df, "QBioLiP vs BioLiP2 BINDING SITE OVERLAP")
+        print_detailed_overlap_statistics(original_df, "QBioLiP vs BioLiP2 BINDING SITE OVERLAP", use_cache=True)
 
     # =========================================================================
     # Identify affinity columns for JSON
@@ -556,43 +629,6 @@ def create_final_json_with_combined_pdbs(exploded_df, original_df, output_file, 
     
     print(f"  Saved JSON to: {output_file} ({len(json_records):,} records)")
     
-    # =========================================================================
-    # Print overlap statistics
-    # =========================================================================
-    if original_df is not None and not original_df.empty:
-        print("\n" + "=" * 70)
-        print("OVERLAP STATISTICS")
-        print("=" * 70)
-        
-        qbio_set = set()
-        for _, row in original_df.iterrows():
-            sites = parse_binding_sites(row.get('Binding_sites_QBioLiP', ''))
-            for site in sites:
-                qbio_set.add((row['UniProt_ID'], row['Ligand_ID'], site))
-        
-        biolip2_set = set()
-        for _, row in original_df.iterrows():
-            sites = parse_binding_sites(row.get('Binding_sites_BioLiP2', ''))
-            for site in sites:
-                biolip2_set.add((row['UniProt_ID'], row['Ligand_ID'], site))
-        
-        common = qbio_set & biolip2_set
-        only_qbio = qbio_set - biolip2_set
-        only_biolip2 = biolip2_set - qbio_set
-        total_unique = qbio_set | biolip2_set
-        
-        """
-        print(f"Q-BioLiP tuples: {len(qbio_set):,}")
-        print(f"BioLiP2 tuples: {len(biolip2_set):,}")
-        print(f"Common to both: {len(common):,}")
-        print(f"Only in Q-BioLiP: {len(only_qbio):,}")
-        print(f"Only in BioLiP2: {len(only_biolip2):,}")
-        print(f"Total unique tuples: {len(total_unique):,}")
-        
-        if len(total_unique) > 0:
-            print(f"Overlapping Binding AA: {len(common)/len(total_unique)*100:.1f}%")
-        """ 
-
     # Save ligand counts to Excel (conditional)
     if save_ligand_counts:
         all_counts.to_excel(ligand_counts_file, index=False)
@@ -732,14 +768,9 @@ def merge_biolip_datasets(qbiolip_df, biolip2_df, remove_duplicates=True, save_m
     # =========================================================================
     # Merge datasets
     # =========================================================================
-    #print(f"\n  DIAGNOSTIC: Q-BioLiP columns before merge: {qbio.columns.tolist()}")
-    #print(f"  DIAGNOSTIC: BioLiP2 columns before merge: {biolip2.columns.tolist()}")
-    
     print("\n  Merging datasets on UniProt_ID, Ligand_ID, and PDB_ID...")
     merged_df = pd.merge(qbio, biolip2, on=['UniProt_ID', 'Ligand_ID', 'PDB_ID'], 
                          how='outer', suffixes=('_qbio', '_biolip2'))
-    
-    #print(f"\n  DIAGNOSTIC: Merged df shape: {merged_df.shape}")
     
     # Remove duplicate columns from merged_df
     if merged_df.columns.duplicated().any():
@@ -829,13 +860,6 @@ def merge_biolip_datasets(qbiolip_df, biolip2_df, remove_duplicates=True, save_m
         "BY PDB (SEPARATE)"
     )
     
-    # =========================================================================
-    # Diagnostic checks
-    # =========================================================================
-    #print(f"\n  DIAGNOSTIC: final_df shape: {final_df.shape}")
-    #print(f"  DIAGNOSTIC: final_df columns: {final_df.columns.tolist()}")
-    #print(f"  DIAGNOSTIC: Does final_df have 'Ligand_ID'? {'Ligand_ID' in final_df.columns}")
-    
     final_affinity_cols = [col for col in final_df.columns if 'affinity' in col.lower() or 
                            'BindingMOAD' in col or 'PDBbind' in col or 'BindingDB' in col]
     if final_affinity_cols:
@@ -908,12 +932,6 @@ def merge_biolip_datasets(qbiolip_df, biolip2_df, remove_duplicates=True, save_m
             exploded_rows.append(record)
     
     exploded_df = pd.DataFrame(exploded_rows)
-    
-    #print(f"\n  DIAGNOSTIC: exploded_df shape: {exploded_df.shape}")
-    #print(f"  DIAGNOSTIC: exploded_df columns: {exploded_df.columns.tolist()}")
-    
-    #if not exploded_df.empty:
-        #print(f"  DIAGNOSTIC: First row of exploded_df:\n{exploded_df.iloc[0].to_dict()}")
     
     # Create JSON with combined PDB IDs (pass save_ligand_counts flag)
     create_final_json_with_combined_pdbs(exploded_df, final_df, json_output, ligand_counts_output, save_ligand_counts=save_ligand_counts)
